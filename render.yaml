@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tamarin-prover
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3001
+
