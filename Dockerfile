@@ -1,6 +1,6 @@
 FROM debian:bullseye
 
-# Đảm bảo apt-get không hỏi tương tác
+# Tránh apt hỏi tương tác
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Cài dependencies cơ bản
@@ -11,14 +11,14 @@ RUN apt-get update && apt-get install -y \
     graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-# Cài GHCup (để có GHC + Cabal + Stack)
+# Cài GHCup (Haskell installer)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh -s -- -y
 ENV PATH="/root/.ghcup/bin:${PATH}"
 
-# Cài Stack qua GHCup
+# Cài Stack và GHC 9.6.6
 RUN ghcup install stack
-RUN ghcup install ghc 9.6.5
-RUN ghcup set ghc 9.6.5
+RUN ghcup install ghc 9.6.6
+RUN ghcup set ghc 9.6.6
 
 # Clone mã nguồn Tamarin
 WORKDIR /app
@@ -28,10 +28,10 @@ WORKDIR /app/tamarin-prover
 # Build Tamarin
 RUN stack setup && stack build && stack install
 
-# Thêm PATH
+# Thêm PATH để gọi được tamarin-prover
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Render truyền vào PORT
+# Render sẽ truyền biến PORT
 ENV PORT=8080
 EXPOSE 8080
 
