@@ -1,38 +1,47 @@
+# Dockerfile - dùng debian và ghcup, cài GHC 9.2.8, ép stack dùng system-ghc + resolver lts-20.26
 FROM debian:bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PORT=8080
 
-# Cài dependencies cơ bản
-RUN apt-get update && apt-get install -y \
-    git build-essential pkg-config \
+# 1) Cài các phụ thuộc hệ thống
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git build-essential pkg-config \
     libgmp-dev libssl-dev libsqlite3-dev zlib1g-dev \
-    libncurses-dev m4 unzip curl \
+    libncurses-dev m4 unzip \
     graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-# Cài GHCup (Haskell installer)
+# 2) Cài ghcup non-interactive (GHC + ghcup bin)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh -s -- -y
-ENV PATH="/root/.ghcup/bin:${PATH}"
 
-# Cài Stack và GHC 9.2.8 (phiên bản ổn định với Tamarin)
-RUN ghcup install stack
-RUN ghcup install ghc 9.2.8
-RUN ghcup set ghc 9.2.8
+# Thêm ghcup và GHC bin vào PATH (đường dẫn chuẩn của ghcup)
+ENV PATH="/root/.ghcup/bin:/root/.ghcup/ghc/9.2.8/bin:/root/.local/bin:${PATH}"
 
-# Clone mã nguồn Tamarin
+# 3) Cài stack và GHC cụ thể (9.2.8)
+RUN /root/.ghcup/bin/ghcup install stack \
+ && /root/.ghcup/bin/ghcup install ghc 9.2.8 \
+ && /root/.ghcup/bin/ghcup set ghc 9.2.8
+
+# Kiểm tra
+RUN stack --version || true
+RUN ghc --version || true
+
+# 4) Clone mã nguồn tamarin (shallow)
 WORKDIR /app
-RUN git clone https://github.com/tamarin-prover/tamarin-prover.git
+RUN git clone --depth 1 https://github.com/tamarin-prover/tamarin-prover.git
+
 WORKDIR /app/tamarin-prover
 
-# Build Tamarin
-RUN stack setup && stack build && stack install
+# 5) Dùng stack với hệ thống GHC và resolver cố định (lts-20.26 ~ GHC 9.2.x)
+#    --no-terminal để không chờ input, --system-ghc để dùng GHC đã cài sẵn
+RUN stack --no-terminal --system-ghc --resolver lts-20.26 setup || true
+RUN stack --no-terminal --system-ghc --resolver lts-20.26 build --verbose
+RUN stack --no-terminal --system-ghc --resolver lts-20.26 install
 
-# Thêm PATH để gọi được tamarin-prover
+# PATH để gọi binary tamarin-prover
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Render sẽ truyền biến PORT
-ENV PORT=8080
-EXPOSE 8080
+EXPOSE ${PORT}
 
-# Khởi chạy Tamarin web UI
 CMD ["sh", "-c", "tamarin-prover interactive . --port $PORT --interface '*4'"]
