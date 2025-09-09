@@ -7,5 +7,5 @@ services:
     autoDeploy: true
     envVars:
       - key: PORT
-        value: 3001
+        value: 8080
 
