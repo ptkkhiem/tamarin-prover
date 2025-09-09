@@ -1,46 +1,57 @@
-# Dockerfile - dùng debian và ghcup, cài GHC 9.2.8, ép stack dùng system-ghc + resolver lts-20.26
-FROM debian:bullseye
+# ---------- Stage 1: builder (build Tamarin with Haskell toolchain) ----------
+FROM haskell:9.2.8-buster AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PORT=8080
+ENV STACK_ROOT=/root/.stack
+ENV PATH="/root/.local/bin:${PATH}"
 
-# 1) Cài các phụ thuộc hệ thống
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 1) cài các package hệ thống cần cho build Haskell
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
     ca-certificates curl git build-essential pkg-config \
     libgmp-dev libssl-dev libsqlite3-dev zlib1g-dev \
     libncurses-dev m4 unzip \
     graphviz \
-    && rm -rf /var/lib/apt/lists/*
+    alex happy \
+    libpcre3-dev libicu-dev libtinfo-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# 2) Cài ghcup non-interactive (GHC + ghcup bin)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh -s -- -y
+WORKDIR /src
 
-# Thêm ghcup và GHC bin vào PATH (đường dẫn chuẩn của ghcup)
-ENV PATH="/root/.ghcup/bin:/root/.ghcup/ghc/9.2.8/bin:/root/.local/bin:${PATH}"
+# 2) clone repo tamarin (shallow)
+RUN git clone --depth 1 https://github.com/tamarin-prover/tamarin-prover.git .
 
-# 3) Cài stack và GHC cụ thể (9.2.8)
-RUN /root/.ghcup/bin/ghcup install stack \
- && /root/.ghcup/bin/ghcup install ghc 9.2.8 \
- && /root/.ghcup/bin/ghcup set ghc 9.2.8
-
-# Kiểm tra
-RUN stack --version || true
-RUN ghc --version || true
-
-# 4) Clone mã nguồn tamarin (shallow)
-WORKDIR /app
-RUN git clone --depth 1 https://github.com/tamarin-prover/tamarin-prover.git
-
-WORKDIR /app/tamarin-prover
-
-# 5) Dùng stack với hệ thống GHC và resolver cố định (lts-20.26 ~ GHC 9.2.x)
-#    --no-terminal để không chờ input, --system-ghc để dùng GHC đã cài sẵn
+# 3) ensure stack uses system-ghc and fixed resolver (lts compatible with GHC 9.2.x)
+#    --system-ghc: dùng GHC có sẵn trong image (haskell:9.2.8)
+#    --resolver lts-20.26: cố định snapshot tương thích (thay đổi nếu bạn muốn khác)
 RUN stack --no-terminal --system-ghc --resolver lts-20.26 setup || true
-RUN stack --no-terminal --system-ghc --resolver lts-20.26 build --verbose
+
+# 4) build with single job to reduce memory pressure, verbose for debug if fails
+RUN stack --no-terminal --system-ghc --resolver lts-20.26 build --jobs=1 --ghc-options="-j1" --verbose
+
+# 5) install binary to ~/.local/bin
 RUN stack --no-terminal --system-ghc --resolver lts-20.26 install
 
-# PATH để gọi binary tamarin-prover
-ENV PATH="/root/.local/bin:${PATH}"
+# ---------- Stage 2: runtime (small image) ----------
+FROM debian:bullseye-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PORT=8080
+
+# runtime libs needed by tamarin binary (adjust if runtime fails)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libgmp10 libsqlite3-0 zlib1g libtinfo6 graphviz \
+    # libssl package name can vary by distro; try libssl3/libssl1.1 fallback
+    libssl3 || true \
+ && rm -rf /var/lib/apt/lists/*
+
+# copy binary and examples from builder
+COPY --from=builder /root/.local/bin/tamarin-prover /usr/local/bin/tamarin-prover
+COPY --from=builder /src/examples /opt/tamarin/examples
+
+WORKDIR /opt/tamarin/examples
 
 EXPOSE ${PORT}
 
