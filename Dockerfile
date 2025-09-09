@@ -1,6 +1,5 @@
 FROM debian:bullseye
 
-# Tránh apt hỏi tương tác
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Cài dependencies cơ bản
@@ -15,10 +14,10 @@ RUN apt-get update && apt-get install -y \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh -s -- -y
 ENV PATH="/root/.ghcup/bin:${PATH}"
 
-# Cài Stack và GHC 9.6.6
+# Cài Stack và GHC 9.2.8 (phiên bản ổn định với Tamarin)
 RUN ghcup install stack
-RUN ghcup install ghc 9.6.6
-RUN ghcup set ghc 9.6.6
+RUN ghcup install ghc 9.2.8
+RUN ghcup set ghc 9.2.8
 
 # Clone mã nguồn Tamarin
 WORKDIR /app
